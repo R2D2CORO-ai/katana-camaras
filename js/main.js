@@ -25,6 +25,8 @@ let blade4
 let blade5
 let blade6
 let imagen
+let serialNumberModify = document.getElementById('sn')
+let currentProcess = document.getElementById('currentProcess')
 let recortito = document.getElementById('Canvascut')
 let recortitoctx = recortito.getContext('2d')
 let recortito1 = document.getElementById('Canvascut1')
@@ -41,9 +43,11 @@ const video = document.querySelector('video')
 
 let canvasArray=[recortito,recortito1,recortito2,recortito3,recortito4,recortito5]
 let model = new cvstfjs.ObjectDetectionModel()
-let model2 = new cvstfjs.ClassificationModel();
-let model3 = new cvstfjs.ClassificationModel();
+let model2 = new cvstfjs.ObjectDetectionModel()
+let model3 = new cvstfjs.ObjectDetectionModel()
 let model4 = new cvstfjs.ClassificationModel();
+let model5 = new cvstfjs.ClassificationModel();
+let model6 = new cvstfjs.ClassificationModel();
 let image1= new Image()
 //image1.src='/muestras/0.jpeg'
 let image2= new Image()
@@ -83,26 +87,21 @@ console.log('Semana:',semana);
 const fechaActual = new Date()
 const diaSemana = fechaActual.getDay()
 async function loadmodel() {
-    await model.loadModelAsync('../segmentacion/model.json') //C:\Users\gdl3_mds\Documents\katana\modelm\New folder
-    console.log(model)
-    await model2.loadModelAsync('../clasificacion/P1/model.json');
-    console.log(model2)
-    await model3.loadModelAsync('../clasificacion/P2/model.json');
-    console.log(model3)
-    await model4.loadModelAsync('../clasificacion/P3/model.json');
-    console.log(model4)
+    await model.loadModelAsync('../segmentacion/P1/model.json') //C:\Users\gdl3_mds\Documents\katana\modelm\New folder
+    await model2.loadModelAsync('../segmentacion/P2/model.json')
+    await model3.loadModelAsync('../segmentacion/P3/model.json')
+    await model4.loadModelAsync('../clasificacion/P1/model.json')
+    await model5.loadModelAsync('../clasificacion/P2/model.json')
+    await model6.loadModelAsync('../clasificacion/P3/model.json')
 }
 loadmodel()
 const socket = io();
 
 socket.on('Sequence_start', function (infoplc) {
-    if (infoplc != 0) {
+    console.log('ya entre')
         serial = infoplc.toString().substr(14,15)
+        serialNumberModify.textContent  = 'SN: '+infoplc.toString().substr(0,29)
         Sequence()//Activa bandera para continuar
-    }
-    else {
-        console.log("Algo salio mal en el backend");
-    }
 });
 
 function plc_response(boxpoint,boxpointcalis,resultadofinal) { //El Array boxpoint guarda la equivalencia del punto, cuando vale pass o cuando vale fail
@@ -149,19 +148,24 @@ function plc_response2(responsevalue){
         resolve('resolved')
     })
 }
-open_cam(0)
+currentProcess.textContent  = 'Waiting for unit'
+
+
 async function Sequence() {
-    
-    boxpoint = [] // Reinicia valor para retrabajar punto
-        await captureimage(0)
-        await stopcam()
-    for (point = 1; point < 3; point++){
+        currentProcess.textContent  = 'Capturing images'
+        boxpoint = [] // Reinicia valor para retrabajar punto
+        
+
+    for (point = 0; point < 3; point++){    
+        
         await open_cam(point)
         await captureimage(point)
         await stopcam()
     }
+    socket.emit('plc_response', 'finish#')
     for (point = 0; point < 3; point++) {
-        await URIimage(fullimage, 1,0,point)
+        currentProcess.textContent  = 'Processing point '+(point+1)
+        await URIimage(fullimage, 3,0,point)
         await predict1(point)
         await recorta(point)
         
@@ -169,12 +173,12 @@ async function Sequence() {
     
     await evaluaArray() // funcion se coloca fuera de for para evaluar toda la cadena
     eval2puntos()
-    await plc_response(boxpoint)
+    //await plc_response(boxpoint)
     
     if(resultado == true){
         //renombra(serial)
     }
-    setTimeout(function fire() { location.reload() }, 8000);// temporizador para limpiar pantalla
+    setTimeout(function fire() { location.reload() }, 1000);// temporizador para limpiar pantalla
 }
 
 //************************************************************************************** Funciones de procesamiento de imagenes */
@@ -184,7 +188,7 @@ async function recorta(point) { // Recorte de canvas
         let canvasctx=[recortitoctx,recortitoctx1,recortitoctx2,recortitoctx3,recortitoctx4,recortitoctx5]
         let fullimageA=[fullimage,fullimage1,fullimage2]
         let coord=[coord1,coord2,coord3]
-        console.log(canvasctx[point*2])
+        
             canvasctx[point*2].drawImage(fullimageA[point], coord[point][0], coord[point][1], coord[point][2], coord[point][3], 0, 0, canvas[point*2].width, canvas[point*2].height) // coordenada y tamaño de recorte en el canvas 
             canvasctx[point*2+1].drawImage(fullimageA[point], coord[point][4], coord[point][5], coord[point][6], coord[point][7], 0, 0, canvas[point*2+1].width, canvas[point*2+1].height)
             
@@ -194,7 +198,7 @@ async function recorta(point) { // Recorte de canvas
             await mlinspector(canvas[point*2+1],coord1[4],point)
             await URIimage(canvas[point*2+1], point, statusf,point)
             allpoints(point*2+2, statusf)
-            await snapshot(serial, point)
+            await snapshot(serial, point,fullimageA[point])
         resolve('resolved')
     })
 }
@@ -229,13 +233,13 @@ async function evaluaArray() {
             idx = boxpoint.indexOf(0, idx + 1);
           }
         if (resultadofinal == false) {
-            document.getElementById('tarjeta').style.background = '#00ff40'
+            //document.getElementById('tarjeta').style.background = '#00ff40'
             pass1 = 1
             plc_response2(pass1)
 
         } 
         else {
-            document.getElementById('tarjeta').style.background = '#cf010b'
+            //document.getElementById('tarjeta').style.background = '#cf010b'
              pass1 = 0
             plc_response2(pass1)
  
@@ -248,9 +252,9 @@ let calis = new Image()// Variable utilizada por switchpic
 async function open_cam(point) {// Resolve de 2 segundos
     return new Promise(async resolve => {
         let camid
-        if (point == 0) { camid = "0e0725c6eabafb6b73b076175082f98bf380e055eee977c1f57f333f0a9fb818" } // Camara 30
-        if (point == 1) { camid = "86deee42c19d573b2314d4e45517273fe8e6a5f362fa888509907668f18a9335" } // Camara 10
-        if (point == 2) { camid = "b675538a1e68d063dcf6d8be7fdce46f5b7f612505cc07706da564b1d2a45248" } // Camara 20
+        if (point == 0) { camid = "d7cfeaea74f015e18666c4419cf4c23c946c463aeb966ffb3ae769b03723bdaf" } // Camara 30
+        if (point == 1) { camid = "2740fd410195e46374e9addf5c4ffde7162a8a0232d4da811af03458c1e1373a" } // Camara 10
+        if (point == 2) { camid = "4a771ff88e10d858d8f0298f0489eb2d19f262bb90ff066a3f4412fc935c7f97" } // Camara 20
         const vgaConstraints = {
             video: {
                 width: { ideal: 1080 },
@@ -265,7 +269,7 @@ async function open_cam(point) {// Resolve de 2 segundos
             console.log(err.name)
             //location.reload()
         })
-        setTimeout(function fire() { resolve('resolved'); }, 250)
+        setTimeout(function fire() { resolve('resolved'); }, 400)
    
 })
 }
@@ -283,7 +287,7 @@ async function captureimage(point) {// Resolve de 2 segundos
             break
         }
         //var dataURI = canvas.toDataURL('image/jpeg');
-        setTimeout(function fire(){resolve('resolved');},800);//Temporal para programacion de secuencia
+        setTimeout(function fire(){resolve('resolved');},500);//Temporal para programacion de secuencia
         resolve('resolved')
     });
 }
@@ -306,11 +310,12 @@ function stopcam() {
           console.log("Camara no encontrada");
         }
     
-        setTimeout(() => resolve('resolved'), 50);
+        setTimeout(() => resolve('resolved'), 300);
       });
     }
-function snapshot(snr,point){
-    var uri = fullimage.toDataURL('image/jpeg');
+function snapshot(snr,point,canva){
+    console.log(canva)
+    var uri = canva.toDataURL('image/jpeg');
      const socket = io();
      socket.emit('picsaving2',uri,snr,point);	
 }
@@ -327,6 +332,7 @@ async function logsaving(logarray,serial){
     });
 }
 async function predict1(point) {
+    let modelSegmentacionA= [model,model2,model3]
     let input_size = model.input_size
     switch(point){
         case 0:
@@ -340,7 +346,7 @@ async function predict1(point) {
         break
     }
     imagen = tf.image.resizeBilinear(imagen.expandDims(), [input_size, input_size])
-    let predictions = await model.executeAsync(imagen)
+    let predictions = await modelSegmentacionA[point].executeAsync(imagen)
     await highlightResults(predictions, point) //espera a esta funcion para verificar si tiene corto o no
 
 }
@@ -349,84 +355,50 @@ async function highlightResults(predictions, punto) {
    
     for (let n = 0; n < predictions[0].length; n++) {
 
-        // Check scores
+       
         if (predictions[1][n] > criterio) {
            console.log(predictions[1])
-            bboxLeft = (predictions[0][n][0] * fullimage.width) //900 es el Width de la imagen y hace match con el with del overlay
-            bboxTop = (predictions[0][n][1] * fullimage.height) //540 es el Height de la imagen y hace match con el with del overlay
-            bboxWidth = (predictions[0][n][2] * fullimage.width) - bboxLeft//800 en vez del video.width
-            bboxHeight = (predictions[0][n][3] * fullimage.height) - bboxTop//448 en vez del video.width
-            if (punto == 0) {
-                coord1.push(bboxLeft)
-                coord1.push(bboxTop)
-                coord1.push(bboxWidth)
-                coord1.push(bboxHeight)
+            bboxLeft = (predictions[0][n][0] * fullimage.width)
+            bboxTop = (predictions[0][n][1] * fullimage.height) 
+            bboxWidth = (predictions[0][n][2] * fullimage.width) - bboxLeft
+            bboxHeight = (predictions[0][n][3] * fullimage.height) - bboxTop
+        if (punto == 0) {
+            coord1.push(bboxLeft)
+            coord1.push(bboxTop)
+            coord1.push(bboxWidth)
+            coord1.push(bboxHeight)
             }
-            else if (punto == 1) {
-                coord2.push(bboxLeft)
-                coord2.push(bboxTop)
-                coord2.push(bboxWidth)
-                coord2.push(bboxHeight)
+        else if (punto == 1) {
+            coord2.push(bboxLeft)
+            coord2.push(bboxTop)
+            coord2.push(bboxWidth)
+            coord2.push(bboxHeight)
             }
-            else {
-                coord3.push(bboxLeft)
-                coord3.push(bboxTop)
-                coord3.push(bboxWidth)
-                coord3.push(bboxHeight)
-            }
-        }
         else {
-            //console.log("PASEEEE 1")
+            coord3.push(bboxLeft)
+            coord3.push(bboxTop)
+            coord3.push(bboxWidth)
+            coord3.push(bboxHeight)
+            }
         }
     }
-    console.log(coord1)
 }
 async function URIimage(cut, photo, status,point) {
-    if(photo==1){
-        switch(point){
-            case 0:
-                var dataURI = fullimage.toDataURL('image/jpeg'); //convierte la imagen
-            break
-            case 1:
-                var dataURI = fullimage1.toDataURL('image/jpeg'); //convierte la imagen
-            break
-            case 2:
-                var dataURI = fullimage2.toDataURL('image/jpeg'); //convierte la imagen
-            break
-        }
-    }
-    else{
-        var dataURI = cut.toDataURL('image/jpeg');
-    }
-    
+    var dataURI = cut.toDataURL('image/jpeg')
     var valor = parseInt(Math.random() * (100 ** 10))
-   socket.emit('picsaving', dataURI, valor, photo, status); //se llama la funcion savepic con los 3 parametros (conversion de imagen, numero de serial declarado previamente y samples que sera el point)
+    socket.emit('picsaving', dataURI, valor, photo, status); //se llama la funcion savepic con los 3 parametros (conversion de imagen, numero de serial declarado previamente y samples que sera el point)
 }
 async function mlinspector(cut,array,pot) {
 return new Promise(async resolve => { // inicio de promesa 
-    switch(pot){
-        case 0:
-        result = await model2.executeAsync(cut)
-        
-        break
-        case 1:
-        result = await model3.executeAsync(cut)
-        
-        break
-        case 2:
-        result = await model4.executeAsync(cut)
-        
-        break
-    }
+    let modelSegmentacionA= [model4,model5,model6]
+    result = await modelSegmentacionA[pot].executeAsync(cut)
     falla = result[0][1]
     pasa = result[0][0]
     if (pasa >= falla&&array!=null){ //Evalua el valor en la posicion 0 que da la redneuronal
         statusf = 1;
-        console.log(result)
     }
     else {
         statusf = 0;
-        console.log(result)
     }
     resolve('resolved')
     })

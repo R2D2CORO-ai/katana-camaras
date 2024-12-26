@@ -5,5 +5,14 @@
     "image-data-uri": "^2.0.1",
     "pg": "^8.11.5",
     "socket.io": "^4.8.1"
-  }
+  },
+  "name": "katana",
+  "version": "1.0.0",
+  "description": "To make it easy for you to get started with GitLab, here's a list of recommended next steps.",
+  "main": "Beskar.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
 }

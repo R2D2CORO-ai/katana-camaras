@@ -13,7 +13,6 @@ var io = require('socket.io')(server); //Bind socket.io to our express server.
 io.on('connection', (socket) => {//Un Socket para todos los requerimientos a postgres
     socket.on('plc_response', function (responsevalue){
         plcdatasender2(responsevalue)
-        console.log(responsevalue)
     })
     socket.on('picsaving', async function (dataURI, valor, p, status) { // se le mandan los parametros no importa si no tienen los mismos nombres
         await savingpic(dataURI, valor, p, status); //espera la funcion savingpic con los parametros 
@@ -33,19 +32,22 @@ io.on('connection', (socket) => {//Un Socket para todos los requerimientos a pos
 var net = require('net')
 var tcpipserver = net.createServer(function (connection) {
     console.log('TCP client connected');
-    connection.write('Handshake ok!');
+    //connection.write('Handshake ok!');
+    clientesConectados=[]
     clientesConectados.push(connection)
-    connection.on('data', function (data) { io.emit('Sequence_start', data.toString())})
+    connection.on('data', function (data) { io.emit('Sequence_start', data.toString());console.log(data.toString())})
 })
 function plcdatasender2(responsevalue) {
     var matrixtostring = responsevalue.toString()
     clientesConectados.forEach((socket) => {
+        console.log(matrixtostring+'write')
         estadoconexion = socket.readyState
         if (estadoconexion == 'closed') {
             console.log("Puerto de PLC cerrado reintento en 1min...")  
         }
         if (estadoconexion == 'open') {
-            socket.write(matrixtostring)
+                socket.write(matrixtostring)
+            
         }
     })
 }
@@ -105,7 +107,7 @@ async function savingpic2(datauri, serial, sqty) {
     let filePath;
     const ImageDataURI = require('image-data-uri');
     return new Promise(async resolve => {
-        let filePath = './katana_samples/' + 'serial' + '';//Ruta de las carpetas por serial
+        let filePath = './katana_samples/' + serial + '';//Ruta de las carpetas por serial
         let filevalidation = fs.existsSync(filePath);
         if (filevalidation) {
 
@@ -114,7 +116,7 @@ async function savingpic2(datauri, serial, sqty) {
         }
         else {
             fs.mkdir(filePath, (error) => {
-                    console.log(error.message);//en caso de que el folder ya exista manda un error y evita hacer otro folder con el mismo nombre.
+                    console.log(error);//en caso de que el folder ya exista manda un error y evita hacer otro folder con el mismo nombre.
                 filePath = '' + filePath + '/' + sqty + '';
                 ImageDataURI.outputFile(datauri, filePath).then(res => console.log(res));
                 console.log("Directorio creado");
